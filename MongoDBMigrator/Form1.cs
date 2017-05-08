@@ -30,9 +30,9 @@ namespace MongoDBMigrator
             return new MongoClient(settings);
         }
 
-        private void MigrateData(string sourceConnString, bool sslSource, string destConnString, bool sslDest, string dbName, string collectionName, int batchSize = 50, string query = "")
+        private int MigrateData(string sourceConnString, bool sslSource, string destConnString, bool sslDest, string dbName, string collectionName, int batchSize = 50, string query = "")
         {
-
+            int total = 0;
             var sourceMongoClient = GetMongoConnection(sourceConnString, sslSource);
             var destMongoClient = GetMongoConnection(destConnString, sslDest);
 
@@ -41,12 +41,16 @@ namespace MongoDBMigrator
 
             while (sourceDocs == null || sourceDocs.Count > 0)
             {
-                sourceDocs = sourceMongoClient.GetDatabase(dbName).GetCollection<BsonDocument>(collectionName).Find(string.IsNullOrEmpty(query) ? (FilterDefinition<BsonDocument>.Empty) : (BsonSerializer.Deserialize<BsonDocument>(query))).Limit(batchSize).Skip(skip).ToList();
-                if(sourceDocs.Count > 0)
+                sourceDocs = sourceMongoClient.GetDatabase(dbName).GetCollection<BsonDocument>(collectionName).Find(string.IsNullOrEmpty(query) ? (FilterDefinition<BsonDocument>.Empty) : (BsonSerializer.Deserialize<BsonDocument>(query))).Skip(skip).Limit(batchSize).ToList();
+                if (sourceDocs.Count > 0)
+                {
+                    total += sourceDocs.Count;
                     destMongoClient.GetDatabase(dbName).GetCollection<BsonDocument>(collectionName).InsertMany(sourceDocs);
+                }
                 skip += batchSize;
             }
 
+            return total;
             
         }
 
@@ -80,9 +84,12 @@ namespace MongoDBMigrator
 
             new Task(() =>
             {
+
+                var total = 0;
+
                 try
                 {
-                    MigrateData(srcConnString, srcUseSSL, destConnString, destUseSSL, dbName.ToString(), collectionName.ToString(), batchSize, jsonQuery);
+                    total = MigrateData(srcConnString, srcUseSSL, destConnString, destUseSSL, dbName.ToString(), collectionName.ToString(), batchSize, jsonQuery);
                 }
                 catch (Exception ex)
                 {
@@ -94,7 +101,7 @@ namespace MongoDBMigrator
 
                 Invoke(new Action(() => {
 
-                    MessageBox.Show("The process is complete", "Completed", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                    MessageBox.Show(string.Format("The process is complete. Total items: {0}", total), "Completed", MessageBoxButtons.OK, MessageBoxIcon.Information);
                     EnableUI(true, "Ready");
 
                 }));
@@ -111,7 +118,7 @@ namespace MongoDBMigrator
             gpbQuery.Enabled = enabled;
             gpbBatchSize.Enabled = enabled;
             btnLoadDBs.Enabled = enabled;
-
+            btnStart.Enabled = enabled;
             lblStatus.Text = message;
 
         }
